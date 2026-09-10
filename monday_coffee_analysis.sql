@@ -1,0 +1,295 @@
+
+
+-- Monday Coffee -- Data Analysis
+select * From city;
+select * From customers;
+select * From products;
+select * From sales;
+
+-- reports & Data Analysis
+
+-- Q.1 Coffee Consumers Count 
+-- How many people in each city are estimated to consume coffee , give that 25% of the population does?
+
+SELECT
+	CITY_NAME,
+	ROUND((POPULATION * 0.25) / 1000000, 2) ESTIMATED_CONSUMER_IN_MILLONS,
+	CITY_RANK
+FROM
+	CITY
+ORDER BY
+	2 DESC; 
+
+-- -- Q.2
+-- Total Revenue from Coffee Sales
+-- What is the total revenue generated from coffee sales across all cities in the last quarter of 2023?
+
+SELECT
+	C.CITY_NAME,
+	SUM(S.TOTAL) TOTAL_REVENUE
+FROM
+	SALES AS S
+	JOIN CUSTOMERS AS CUST ON S.CUSTOMER_ID = CUST.CUSTOMER_ID
+	JOIN CITY AS C ON C.CITY_ID = CUST.CITY_ID
+WHERE
+	EXTRACT(
+		YEAR
+		FROM
+			S.SALES_DATE
+	) = 2023
+	AND EXTRACT(
+		QUARTER
+		FROM
+			S.SALES_DATE
+	) = 4
+GROUP BY
+	1
+ORDER BY
+	2 DESC;
+
+
+-- Q.3
+-- Sales Count for Each Product
+-- How many units of each coffee product have been sold?
+
+
+SELECT
+	P.PRODUCT_NAME,
+	SUM(S.TOTAL) TOTAL_UNIT_SOLD
+FROM
+	PRODUCTS AS P
+	JOIN SALES AS S ON S.PRODUCT_ID = P.PRODUCT_ID
+GROUP BY
+	1
+ORDER BY
+	2 DESC;
+
+
+-- Q.4
+-- Average Sales Amount per City
+-- What is the average sales amount per customer in each city?
+
+
+SELECT
+	C.CITY_NAME,
+	SUM(S.TOTAL) TOTAL_SALES,
+	COUNT(DISTINCT S.CUSTOMER_ID),
+	ROUND(
+		SUM(S.TOTAL)::NUMERIC / COUNT(DISTINCT S.CUSTOMER_ID)::NUMERIC,
+		2
+	) AS NET
+FROM
+	CITY AS C
+	JOIN CUSTOMERS AS CUST ON CUST.CITY_ID = C.CITY_ID
+	JOIN SALES AS S ON S.CUSTOMER_ID = CUST.CUSTOMER_ID
+GROUP BY
+	1
+ORDER BY
+	2 DESC;
+
+
+-- -- Q.5
+-- City Population and Coffee Consumers (25%)
+-- Provide a list of cities along with their populations and estimated coffee consumers.
+-- return city_name, total current cx, estimated coffee consumers (25%)
+
+WITH
+	CUSTOMER_TABLE AS (
+		SELECT
+			C.CITY_NAME,
+			COUNT(DISTINCT S.CUSTOMER_ID)::NUMERIC AS NO_OF_CUSTOMER
+		FROM
+			CITY AS C
+			JOIN CUSTOMERS AS CUST ON C.CITY_ID = CUST.CITY_ID
+			JOIN SALES AS S ON S.CUSTOMER_ID = CUST.CUSTOMER_ID
+		GROUP BY
+			1
+	)
+SELECT
+	C.CITY_NAME,
+	C.POPULATION,
+	CUSTOMER_TABLE.NO_OF_CUSTOMER,
+	ROUND((C.POPULATION * 0.25) / 1000000, 2) COFFEE_CONSUMERE_IN_MILLION
+FROM
+	CITY AS C
+	JOIN CUSTOMER_TABLE ON CUSTOMER_TABLE.CITY_NAME = C.CITY_NAME
+ORDER BY
+	4 DESC;
+
+
+
+-- -- Q6
+-- Top Selling Products by City
+-- What are the top 3 selling products in each city based on sales volume?
+WITH
+	RANKING_DATA AS (
+		SELECT
+			C.CITY_NAME,
+			P.PRODUCT_NAME,
+			COUNT(S.TOTAL) TOTAL_ORDERS,
+			DENSE_RANK() OVER (
+				PARTITION BY
+					C.CITY_NAME
+				ORDER BY
+					COUNT(S.TOTAL) DESC
+			) RANKING
+		FROM
+			CITY AS C
+			JOIN CUSTOMERS AS CUST ON C.CITY_ID = CUST.CITY_ID
+			JOIN SALES AS S ON S.CUSTOMER_ID = CUST.CUSTOMER_ID
+			JOIN PRODUCTS AS P ON P.PRODUCT_ID = S.PRODUCT_ID
+		GROUP BY
+			C.CITY_NAME,
+			P.PRODUCT_NAME
+	)
+SELECT
+	*
+FROM
+	RANKING_DATA
+WHERE
+	RANKING <= 3
+
+
+-- Q.7
+-- Customer Segmentation by City
+-- How many unique customers are there in each city who have purchased coffee products?
+
+WITH
+	CATEGORY AS (
+		SELECT
+			P.PRODUCT_ID,
+			CASE
+				WHEN P.PRODUCT_ID IN (1, 2, 3, 4, 5, 6, 7,9,10) THEN 'rich cream'
+				WHEN P.PRODUCT_ID IN (8,11, 12, 13, 14, 15, 16, 18, 19, 20) THEN 'chocolate rich'
+				ELSE 'normal coffee'
+			END AS COFFEE_CATEGORY
+		FROM
+			PRODUCTS AS P
+	)
+SELECT
+	C.CITY_NAME,
+	COUNT(DISTINCT S.CUSTOMER_ID) UNIQUE_CUSTOMER
+FROM
+	CITY AS C
+	JOIN CUSTOMERS AS CUST ON CUST.CITY_ID = C.CITY_ID
+	JOIN SALES AS S ON S.CUSTOMER_ID = CUST.CUSTOMER_ID
+	JOIN PRODUCTS AS P ON P.PRODUCT_ID = S.PRODUCT_ID
+	JOIN CATEGORY AS CAT ON CAT.PRODUCT_ID = P.PRODUCT_ID
+WHERE
+	CAT.COFFEE_CATEGORY = 'rich cream'
+GROUP BY
+	C.CITY_NAME
+order by unique_customer desc;
+
+
+-- -- Q.8
+-- Average Sale vs Rent
+-- Find each city and their average sale per customer and avg rent per customer
+
+WITH
+	AVG_SALE_TABLE AS (
+		SELECT
+			C.CITY_NAME,
+			COUNT(DISTINCT S.CUSTOMER_ID) AS TOTAL_CUSTOMER,
+			ROUND(
+				SUM(S.TOTAL)::NUMERIC / COUNT(DISTINCT S.CUSTOMER_ID)::NUMERIC,
+				2
+			) AS AVERAGE_SALES_PER_CUSTOMER
+		FROM
+			SALES AS S
+			JOIN CUSTOMERS AS CUST ON CUST.CUSTOMER_ID = S.CUSTOMER_ID
+			JOIN CITY AS C ON CUST.CITY_ID = C.CITY_ID
+		GROUP BY
+			C.CITY_NAME
+	),
+	AVG_RENT_TABLE AS (
+		SELECT
+			C.CITY_NAME,
+			SUM(C.ESTIMATED_RENT) AS ESTIMATED_RENT
+		FROM
+			CITY AS C
+		GROUP BY
+			C.CITY_NAME
+	)
+SELECT
+	C.CITY_NAME,
+	C.ESTIMATED_RENT,
+	AVG_SALE.TOTAL_CUSTOMER,
+	AVG_SALE.AVERAGE_SALES_PER_CUSTOMER,
+	ROUND(
+		AVG_RENT.ESTIMATED_RENT::NUMERIC / AVG_SALE.TOTAL_CUSTOMER::NUMERIC,
+		2
+	) AS AVG_RENT_PER_CUSTOMER
+FROM
+	CITY AS C
+	JOIN AVG_SALE_TABLE AS AVG_SALE ON AVG_SALE.CITY_NAME = C.CITY_NAME
+	JOIN AVG_RENT_TABLE AS AVG_RENT ON AVG_RENT.CITY_NAME = C.CITY_NAME
+ORDER BY
+	AVG_SALE.AVERAGE_SALES_PER_CUSTOMER DESC
+
+
+-- Q.9
+-- Monthly Sales Growth
+-- Sales growth rate: Calculate the percentage growth (or decline) in sales over different time periods (monthly)
+-- by each city
+
+WITH
+	MONTHLY_SALES AS (
+		SELECT
+			C.CITY_NAME,
+			TO_CHAR(S.SALES_DATE, 'MONTH') SALES_MONTH,
+			TO_CHAR(S.SALES_DATE, 'yyyy') SALES_YEAR,
+			TO_CHAR(S.SALES_DATE, 'mm') SALES_MONTH_NO,
+			SUM(S.TOTAL) CURR_MONTH_SALE
+		FROM
+			SALES AS S
+			JOIN CUSTOMERS AS CUST ON CUST.CUSTOMER_ID = S.CUSTOMER_ID
+			JOIN CITY AS C ON C.CITY_ID = CUST.CITY_ID
+		GROUP BY
+			C.CITY_ID,
+			SALES_MONTH,
+			SALES_MONTH_NO,
+			SALES_YEAR
+		ORDER BY
+			C.CITY_ID,
+			SALES_MONTH_NO,
+			SALES_YEAR
+	),
+	GROWTH_RATIO AS (
+		SELECT
+			CITY_NAME,
+			SALES_MONTH,
+			SALES_YEAR,
+			CURR_MONTH_SALE,
+			LAG(CURR_MONTH_SALE, 1) OVER (
+				PARTITION BY
+					CITY_NAME
+				ORDER BY
+					SALES_YEAR,
+					SALES_MONTH_NO
+			) LASTM_SALES
+		FROM
+			MONTHLY_SALES
+		ORDER BY
+			CITY_NAME,
+			SALES_YEAR,
+			SALES_MONTH_NO ASC
+	)
+SELECT
+	CITY_NAME,
+	SALES_MONTH,
+	SALES_YEAR,
+	CURR_MONTH_SALE,
+	LASTM_SALES,
+	ROUND(
+		(
+			(CURR_MONTH_SALE - LASTM_SALES) / LASTM_SALES::NUMERIC * 100
+		)::NUMERIC,
+		2
+	)
+FROM
+	GROWTH_RATIO
+WHERE
+	LASTM_SALES IS NOT NULL
+
+
